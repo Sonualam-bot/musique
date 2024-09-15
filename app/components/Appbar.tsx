@@ -2,7 +2,7 @@
 
 import React from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
-import { ArrowRight, Music, Headphones, Mic2, Star } from "lucide-react";
+import {  Music } from "lucide-react";
 import Link from "next/link";
 
 function Appbar() {

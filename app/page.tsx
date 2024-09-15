@@ -107,6 +107,7 @@ export default function LandingPage() {
               <form className="flex flex-col sm:flex-row gap-2">
                 <Input
                   type="email"
+                  name="email"
                   placeholder="Enter your email"
                   className="bg-gray-700 text-white border-gray-600"
                 />

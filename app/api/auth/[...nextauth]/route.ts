@@ -1,6 +1,6 @@
 import GoogleProvider from "next-auth/providers/google";
 import NextAuth from "next-auth/next";
-import { prismaClient } from "@/app/lib/db";
+import db from "@/lib/db";
 
 const handler = NextAuth({
   providers: [
@@ -15,7 +15,7 @@ const handler = NextAuth({
         return false;
       }
       try {
-        await prismaClient.user.create({
+        await db.user.create({
           data: {
             email: params.user.email,
             provider: "Google",

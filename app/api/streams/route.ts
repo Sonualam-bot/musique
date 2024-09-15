@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { prismaClient } from "@/app/lib/db";
+import db from "@/lib/db";
 
 //@ts-ignore
 import youtubeSearchApi from "youtube-search-api";
-
-const YT_REGEX = new RegExp(
-  "^https?://(?:www\\.)?youtube\\.com/watch\\?v=[\\w-]{11}(?:&t=\\d+s)?$"
-);
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth-options";
+import { YT_REGEX } from "@/lib/utils";
 
 const CreateStreamsSchema = z.object({
   creatorId: z.string(),
@@ -16,40 +15,44 @@ const CreateStreamsSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    1;
-
     const data = CreateStreamsSchema.parse(await req.json());
-    const isYt = YT_REGEX.test(data.url);
 
-    if (!isYt) {
+    if (!data.url.trim()) {
       return NextResponse.json(
         {
-          message: "Wrong URL format",
+          message: "YouTube link cannot be empty",
         },
         {
-          status: 411,
+          status: 400,
         }
       );
     }
 
-    const extractedId = data.url.split("?v=")[1];
-    console.log(extractedId);
+    const isYt = data.url.match(YT_REGEX);
+    const videoId = data.url ? data.url.match(YT_REGEX)?.[1] : null;
+    if (!isYt || !videoId) {
+      return NextResponse.json(
+        {
+          message: "Invalid YouTube URL format",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
 
-    const res = await youtubeSearchApi.GetVideoDetails(extractedId);
-
-    console.log("title", res.title);
-    console.log("thumbnail", JSON.stringify(res.thumbnail.thumbnails));
+    const res = await youtubeSearchApi.GetVideoDetails(videoId);
 
     const thumbnails = res.thumbnail.thumbnails.sort(
       (a: { width: number }, b: { width: number }) =>
         a.width < b.width ? -1 : 1
     );
 
-    const stream = await prismaClient.stream.create({
+    const stream = await db.stream.create({
       data: {
         userId: data.creatorId,
         url: data.url,
-        extractedId,
+        extractedId: videoId,
         type: "Youtube",
         title: res.title ?? "Can't find video",
         smallImg:
@@ -64,8 +67,9 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({
-      message: "Added stream",
-      id: stream.id,
+      ...stream,
+      hasUpvoted: false,
+      upVotes: 0,
     });
   } catch (e) {
     return NextResponse.json(
@@ -82,13 +86,41 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   const creatorId = req.nextUrl.searchParams.get("creatorId");
-  const streams = await prismaClient.stream.findMany({
+
+  if (!creatorId) {
+    return NextResponse.json(
+      {
+        message: "Error",
+      },
+      {
+        status: 411,
+      }
+    );
+  }
+
+  const streams = await db.stream.findMany({
     where: {
-      userId: creatorId ?? "",
+      userId: creatorId,
+    },
+    include: {
+      _count: {
+        select: {
+          upvotes: true,
+        },
+      },
+      upvotes: {
+        where: {
+          userId: creatorId,
+        },
+      },
     },
   });
 
   return NextResponse.json({
-    streams,
+    streams: streams.map(({ _count, ...rest }) => ({
+      ...rest,
+      upvotes: _count.upvotes,
+      haveUpvoted: rest.upvotes.length ? true : false,
+    })),
   });
 }
